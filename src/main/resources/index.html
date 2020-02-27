@@ -49,14 +49,16 @@
                             log('Response : ' + d.data)
                         }
 
+                        ws.onerror = function(event){
+                            log('error : ' + event)
+                        }
+
                         $('#send').click(function () {
                             var msg = $('#msg').val()
                             $('#msg').val('')
-                            if (ws.send(msg)) {
-                                log('Message sent')
-                            } else {
-                                log('Message not sent')
-                            }
+                            var res = ws.send(msg)
+                            console.log("res:" + res)
+                            log('Message sent')
                         })
 
                     } else {

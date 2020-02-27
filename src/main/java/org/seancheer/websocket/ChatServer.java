@@ -3,6 +3,9 @@ package org.seancheer.websocket;
 import com.sun.deploy.net.HttpUtils;
 import com.sun.javafx.sg.prism.NGTriangleMesh;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.buffer.UnpooledHeapByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -36,6 +39,7 @@ import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.stream.ChunkedNioFile;
 import io.netty.handler.stream.ChunkedWriteHandler;
+import io.netty.util.CharsetUtil;
 import io.netty.util.concurrent.ImmediateEventExecutor;
 import jdk.nashorn.internal.runtime.linker.Bootstrap;
 
@@ -75,10 +79,11 @@ public class ChatServer {
 
     /**
      * 回收相关的资源
+     *
      * @param group
      * @param eventLoopGroup
      */
-    private static void destroy(ChannelGroup group, EventLoopGroup eventLoopGroup){
+    private static void destroy(ChannelGroup group, EventLoopGroup eventLoopGroup) {
         group.close();
         eventLoopGroup.shutdownGracefully();
     }
@@ -105,7 +110,7 @@ public class ChatServer {
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest request) throws Exception {
-            if (wsUri.equalsIgnoreCase(request.uri())) {
+            if (!wsUri.equalsIgnoreCase(request.uri())) {
                 //如果需要100，那么发送100给用户
                 if (HttpUtil.is100ContinueExpected(request)) {
                     send100Continue(ctx);
@@ -142,6 +147,12 @@ public class ChatServer {
             }
         }
 
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            cause.printStackTrace();
+            ctx.close();
+        }
+
         /**
          * send 100 continue
          *
@@ -175,18 +186,41 @@ public class ChatServer {
             channelGroup.writeAndFlush(msg.retain());
         }
 
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            Channel curChannel = ctx.channel();
+            channelGroup.remove(curChannel);
+            String msg = String.format("Client[%s] has been left.",
+                    curChannel.remoteAddress().toString());
+            System.out.println(msg);
+            channelGroup.writeAndFlush(new TextWebSocketFrame(msg));
+//                    .addListener(new ChannelFutureListener() {
+//                        @Override
+//                        public void operationComplete(ChannelFuture future) throws Exception {
+//                            System.out.println("Leaving msg has been send!");
+//                        }
+//                    });
+        }
 
         @Override
         public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
             if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete) {
+                //没有新创建的channel都会被分配一个新的pipeline，所以这里的remove是没有问题的，只是当前已经创建好的websocket channel移除掉了HttpHandler，
+                //其他的并不会受到影响
                 ctx.pipeline().remove(HttpRequestHandler.class);
                 //将加入信息发送给所有的channel
-                channelGroup.writeAndFlush(new TextWebSocketFrame("Client " + ctx.channel() + " joined"));
+                channelGroup.writeAndFlush(new TextWebSocketFrame("Client " + ctx.channel().remoteAddress().toString() + " joined"));
                 //将当前channel加入到channel group中
                 channelGroup.add(ctx.channel());
             } else {
                 super.userEventTriggered(ctx, evt);
             }
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            cause.printStackTrace();
+            ctx.close();
         }
     }
 
