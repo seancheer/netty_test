@@ -10,7 +10,7 @@
 
     <properties>
     <netty.version>4.1.43.Final</netty.version>
-        <proto.version>3.6.1</proto.version>
+        <proto.version>3.16.1</proto.version>
     </properties>
 
     <dependencies>
